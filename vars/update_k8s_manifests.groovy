@@ -4,52 +4,98 @@
  * Update Kubernetes manifests with new image tags
  */
 def call(Map config = [:]) {
+
     def imageTag = config.imageTag ?: error("Image tag is required")
     def manifestsPath = config.manifestsPath ?: 'kubernetes'
     def gitCredentials = config.gitCredentials ?: 'github-credentials'
     def gitUserName = config.gitUserName ?: 'Jenkins CI'
     def gitUserEmail = config.gitUserEmail ?: 'jenkins@example.com'
-    
+
     echo "Updating Kubernetes manifests with image tag: ${imageTag}"
-    
-    withCredentials([usernamePassword(
-        credentialsId: gitCredentials,
-        usernameVariable: 'GIT_USERNAME',
-        passwordVariable: 'GIT_PASSWORD'
-    )]) {
-        // Configure Git
-        sh """
-            git config user.name "${gitUserName}"
-            git config user.email "${gitUserEmail}"
-        """
-        
-        // Update deployment manifests with new image tags - using proper Linux sed syntax
-        sh """
-            # Update main application deployment - note the correct image name is sufiyannadeem/easyshop-app
-            sed -i "s|image: sufiyannadeem/easyshop-app:.*|image: sufiyannadeem/easyshop-app:${imageTag}|g" ${manifestsPath}/08-easyshop-deployment.yaml
-            
-            # Update migration job if it exists
-            if [ -f "${manifestsPath}/12-migration-job.yaml" ]; then
-                sed -i "s|image: sufiyannadeem/easyshop-migration:.*|image: sufiyannadeem/easyshop-migration:${imageTag}|g" ${manifestsPath}/12-migration-job.yaml
-            fi
-            
-            # Ensure ingress is using the correct domain
-            if [ -f "${manifestsPath}/10-ingress.yaml" ]; then
-                sed -i "s|host: .*|host: easyshop.letsdeployit.com|g" ${manifestsPath}/10-ingress.yaml
-            fi
-            
-            # Check for changes
-            if git diff --quiet; then
-                echo "No changes to commit"
-            else
-                # Commit and push changes
-                git add ${manifestsPath}/*.yaml
-                git commit -m "Update image tags to ${imageTag} and ensure correct domain [ci skip]"
-                
-                # Set up credentials for push
-                git remote set-url origin https://\${GIT_USERNAME}:\${GIT_PASSWORD}@github.com/sufiyannadeem/tws-e-commerce-app.git
-                git push origin HEAD:\${GIT_BRANCH}
-            fi
-        """
+
+    withCredentials([
+        usernamePassword(
+            credentialsId: gitCredentials,
+            usernameVariable: 'GIT_USERNAME',
+            passwordVariable: 'GIT_PASSWORD'
+        )
+    ]) {
+
+        withEnv([
+            "IMAGE_TAG=${imageTag}",
+            "MANIFESTS_PATH=${manifestsPath}",
+            "GIT_USER_NAME=${gitUserName}",
+            "GIT_USER_EMAIL=${gitUserEmail}"
+        ]) {
+
+            sh '''
+                set -e
+
+                git config user.name "$GIT_USER_NAME"
+                git config user.email "$GIT_USER_EMAIL"
+
+                # Update main application deployment
+                if [ -f "$MANIFESTS_PATH/08-easyshop-deployment.yaml" ]; then
+                    sed -i \
+                        "s|image: sufiyannadeem/easyshop-app:.*|image: sufiyannadeem/easyshop-app:$IMAGE_TAG|g" \
+                        "$MANIFESTS_PATH/08-easyshop-deployment.yaml"
+                fi
+
+                # Update migration job if it exists
+                if [ -f "$MANIFESTS_PATH/12-migration-job.yaml" ]; then
+                    sed -i \
+                        "s|image: sufiyannadeem/easyshop-migration:.*|image: sufiyannadeem/easyshop-migration:$IMAGE_TAG|g" \
+                        "$MANIFESTS_PATH/12-migration-job.yaml"
+                fi
+
+                # Ensure ingress uses the correct domain
+                if [ -f "$MANIFESTS_PATH/10-ingress.yaml" ]; then
+                    sed -i \
+                        "s|host: .*|host: easyshop.nadeemsufiyan.in|g" \
+                        "$MANIFESTS_PATH/10-ingress.yaml"
+                fi
+
+                # Check only Kubernetes manifest changes
+                if git diff --quiet -- "$MANIFESTS_PATH"; then
+                    echo "No Kubernetes manifest changes detected."
+                    exit 0
+                fi
+
+                git add "$MANIFESTS_PATH"
+
+                git commit \
+                    -m "Update image tags to $IMAGE_TAG and ensure correct domain [ci skip]"
+
+                # Keep credentials OUT of the Git remote URL
+                git remote set-url origin \
+                    "https://github.com/sufiyannadeem/tws-e-commerce-app.git"
+
+                # Temporary Git credential helper
+                ASKPASS_SCRIPT="$(mktemp)"
+
+                cat > "$ASKPASS_SCRIPT" <<'EOF'
+#!/bin/sh
+
+case "$1" in
+    *Username*)
+        echo "$GIT_USERNAME"
+        ;;
+    *Password*)
+        echo "$GIT_PASSWORD"
+        ;;
+esac
+EOF
+
+                chmod 700 "$ASKPASS_SCRIPT"
+
+                export GIT_ASKPASS="$ASKPASS_SCRIPT"
+                export GIT_TERMINAL_PROMPT=0
+
+                git push origin HEAD:master
+
+                rm -f "$ASKPASS_SCRIPT"
+            '''
+        }
     }
 }
+
