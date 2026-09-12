@@ -6,17 +6,17 @@ def call(Map config = [:]) {
 
     echo "Pushing Docker image: ${imageName}:${imageTag}"
 
-    withCredentials([
-        usernamePassword(
-            credentialsId: credentials,
-            usernameVariable: 'DOCKER_USERNAME',
-            passwordVariable: 'DOCKER_PASSWORD'
-        )
+    withEnv([
+        "IMAGE_NAME=${imageName}",
+        "IMAGE_TAG=${imageTag}"
     ]) {
 
-        withEnv([
-            "IMAGE_NAME=${imageName}",
-            "IMAGE_TAG=${imageTag}"
+        withCredentials([
+            usernamePassword(
+                credentialsId: credentials,
+                usernameVariable: 'DOCKER_USERNAME',
+                passwordVariable: 'DOCKER_PASSWORD'
+            )
         ]) {
 
             sh '''
@@ -32,5 +32,3 @@ def call(Map config = [:]) {
         }
     }
 }
-
-
