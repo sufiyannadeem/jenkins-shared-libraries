@@ -64,7 +64,7 @@ def call(Map config = [:]) {
                 git add "$MANIFESTS_PATH"
 
                 git commit \
-                    -m "Update image tags to $IMAGE_TAG and ensure correct domain [ci skip]"
+                    -m "chore: update image tags to $IMAGE_TAG [skip ci]"
 
                 # Keep credentials OUT of the Git remote URL
                 git remote set-url origin \
