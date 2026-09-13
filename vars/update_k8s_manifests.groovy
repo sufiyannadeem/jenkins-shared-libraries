@@ -1,4 +1,3 @@
-```groovy
 def call(String imageTag) {
 
     def gitOpsRepo = 'https://github.com/sufiyannadeem/tws-e-commerce-gitops.git'
@@ -45,4 +44,3 @@ def call(String imageTag) {
         """
     }
 }
-```
