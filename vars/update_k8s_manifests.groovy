@@ -1,11 +1,18 @@
-def call(String imageTag) {
+def call(
+    String imageTag,
+    String manifestsPath = 'kubernetes',
+    String gitCredentials = 'github-credentials',
+    String gitUserName = 'Jenkins CI',
+    String gitUserEmail = 'sufiyanmohammed098@gmail.com'
+) {
 
     def gitOpsRepo = 'https://github.com/sufiyannadeem/tws-e-commerce-gitops.git'
+    def gitOpsBranch = 'main'
     def gitOpsDir = 'gitops'
 
     withCredentials([
         usernamePassword(
-            credentialsId: 'github-credentials',
+            credentialsId: gitCredentials,
             usernameVariable: 'GIT_USERNAME',
             passwordVariable: 'GIT_PASSWORD'
         )
@@ -14,20 +21,24 @@ def call(String imageTag) {
         sh """
             set -e
 
+            echo "Cloning GitOps repository..."
+
             rm -rf ${gitOpsDir}
 
-            git clone https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/sufiyannadeem/tws-e-commerce-gitops.git ${gitOpsDir}
+            git clone --branch ${gitOpsBranch} https://\${GIT_USERNAME}:\${GIT_PASSWORD}@github.com/sufiyannadeem/tws-e-commerce-gitops.git ${gitOpsDir}
 
             cd ${gitOpsDir}
 
-            git config user.name "jenkins"
-            git config user.email "jenkins@local"
+            git config user.name "${gitUserName}"
+            git config user.email "${gitUserEmail}"
 
             echo "Updating EasyShop image tags to ${imageTag}"
 
-            sed -i 's|image: sufiyannadeem/easyshop-app:.*|image: sufiyannadeem/easyshop-app:${imageTag}|g' kubernetes/*.yaml
+            sed -i 's|image: sufiyannadeem/easyshop-app:.*|image: sufiyannadeem/easyshop-app:${imageTag}|g' ${manifestsPath}/*.yaml
 
-            sed -i 's|image: sufiyannadeem/easyshop-migration:.*|image: sufiyannadeem/easyshop-migration:${imageTag}|g' kubernetes/*.yaml
+            sed -i 's|image: sufiyannadeem/easyshop-migration:.*|image: sufiyannadeem/easyshop-migration:${imageTag}|g' ${manifestsPath}/*.yaml
+
+            echo "Checking changes..."
 
             git status
 
@@ -36,11 +47,17 @@ def call(String imageTag) {
                 exit 0
             fi
 
-            git add kubernetes/
+            echo "Committing GitOps changes..."
+
+            git add ${manifestsPath}/
 
             git commit -m "chore: update image tags to ${imageTag}"
 
-            git push origin master
+            echo "Pushing changes to GitOps repository..."
+
+            git push origin ${gitOpsBranch}
+
+            echo "GitOps repository updated successfully."
         """
     }
 }
