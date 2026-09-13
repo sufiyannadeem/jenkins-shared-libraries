@@ -1,101 +1,48 @@
-#!/usr/bin/env groovy
+```groovy
+def call(String imageTag) {
 
-/**
- * Update Kubernetes manifests with new image tags
- */
-def call(Map config = [:]) {
-
-    def imageTag = config.imageTag ?: error("Image tag is required")
-    def manifestsPath = config.manifestsPath ?: 'kubernetes'
-    def gitCredentials = config.gitCredentials ?: 'github-credentials'
-    def gitUserName = config.gitUserName ?: 'Jenkins CI'
-    def gitUserEmail = config.gitUserEmail ?: 'jenkins@example.com'
-
-    echo "Updating Kubernetes manifests with image tag: ${imageTag}"
+    def gitOpsRepo = 'https://github.com/sufiyannadeem/tws-e-commerce-gitops.git'
+    def gitOpsDir = 'gitops'
 
     withCredentials([
         usernamePassword(
-            credentialsId: gitCredentials,
+            credentialsId: 'github-credentials',
             usernameVariable: 'GIT_USERNAME',
             passwordVariable: 'GIT_PASSWORD'
         )
     ]) {
 
-        withEnv([
-            "IMAGE_TAG=${imageTag}",
-            "MANIFESTS_PATH=${manifestsPath}",
-            "GIT_USER_NAME=${gitUserName}",
-            "GIT_USER_EMAIL=${gitUserEmail}"
-        ]) {
+        sh """
+            set -e
 
-            sh '''
-                set -e
+            rm -rf ${gitOpsDir}
 
-                git config user.name "$GIT_USER_NAME"
-                git config user.email "$GIT_USER_EMAIL"
+            git clone https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/sufiyannadeem/tws-e-commerce-gitops.git ${gitOpsDir}
 
-                # Update main application deployment
-                if [ -f "$MANIFESTS_PATH/08-easyshop-deployment.yaml" ]; then
-                    sed -i \
-                        "s|image: sufiyannadeem/easyshop-app:.*|image: sufiyannadeem/easyshop-app:$IMAGE_TAG|g" \
-                        "$MANIFESTS_PATH/08-easyshop-deployment.yaml"
-                fi
+            cd ${gitOpsDir}
 
-                # Update migration job if it exists
-                if [ -f "$MANIFESTS_PATH/12-migration-job.yaml" ]; then
-                    sed -i \
-                        "s|image: sufiyannadeem/easyshop-migration:.*|image: sufiyannadeem/easyshop-migration:$IMAGE_TAG|g" \
-                        "$MANIFESTS_PATH/12-migration-job.yaml"
-                fi
+            git config user.name "jenkins"
+            git config user.email "jenkins@local"
 
-                # Ensure ingress uses the correct domain
-                if [ -f "$MANIFESTS_PATH/10-ingress.yaml" ]; then
-                    sed -i \
-                        "s|host: .*|host: easyshop.nadeemsufiyan.in|g" \
-                        "$MANIFESTS_PATH/10-ingress.yaml"
-                fi
+            echo "Updating EasyShop image tags to ${imageTag}"
 
-                # Check only Kubernetes manifest changes
-                if git diff --quiet -- "$MANIFESTS_PATH"; then
-                    echo "No Kubernetes manifest changes detected."
-                    exit 0
-                fi
+            sed -i 's|image: sufiyannadeem/easyshop-app:.*|image: sufiyannadeem/easyshop-app:${imageTag}|g' kubernetes/*.yaml
 
-                git add "$MANIFESTS_PATH"
+            sed -i 's|image: sufiyannadeem/easyshop-migration:.*|image: sufiyannadeem/easyshop-migration:${imageTag}|g' kubernetes/*.yaml
 
-                git commit \
-                    -m "chore: update image tags to $IMAGE_TAG [skip ci]"
+            git status
 
-                # Keep credentials OUT of the Git remote URL
-                git remote set-url origin \
-                    "https://github.com/sufiyannadeem/tws-e-commerce-app.git"
+            if git diff --quiet; then
+                echo "No Kubernetes manifest changes detected."
+                exit 0
+            fi
 
-                # Temporary Git credential helper
-                ASKPASS_SCRIPT="$(mktemp)"
+            git add kubernetes/
 
-                cat > "$ASKPASS_SCRIPT" <<'EOF'
-#!/bin/sh
+            git commit -m "chore: update image tags to ${imageTag}"
 
-case "$1" in
-    *Username*)
-        echo "$GIT_USERNAME"
-        ;;
-    *Password*)
-        echo "$GIT_PASSWORD"
-        ;;
-esac
-EOF
-
-                chmod 700 "$ASKPASS_SCRIPT"
-
-                export GIT_ASKPASS="$ASKPASS_SCRIPT"
-                export GIT_TERMINAL_PROMPT=0
-
-                git push origin HEAD:master
-
-                rm -f "$ASKPASS_SCRIPT"
-            '''
-        }
+            git push origin master
+        """
     }
 }
-
+```
